@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 type Message = { id: string; role: "ai" | "candidate"; content: string; isAgentAda?: boolean; };
@@ -16,6 +16,9 @@ export default function InterviewPage() {
   const [interviewComplete, setInterviewComplete] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [roleInfo, setRoleInfo] = useState({ targetRole: "", experienceLevel: "" });
+  const [warnings, setWarnings] = useState(0);
+  const [showWarning, setShowWarning] = useState(false);
+  const [warningMessage, setWarningMessage] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
 
@@ -68,6 +71,52 @@ export default function InterviewPage() {
       }
     }
   }, []);
+
+  useEffect(() => {
+    if (interviewComplete) return;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        handleViolation("Tab switching or minimizing the browser is not allowed during the interview.");
+      }
+    };
+
+    const handleBlur = () => {
+      handleViolation("Window lost focus. Please keep the interview window active.");
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("blur", handleBlur);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", handleBlur);
+    };
+  }, [interviewComplete]);
+
+  const handleViolation = useCallback((reason: string) => {
+    if (interviewComplete) return;
+    
+    setWarnings((prev) => {
+      const newWarnings = prev + 1;
+      if (newWarnings >= 3) {
+        setInterviewComplete(true);
+        const terminationMsg: Message = {
+          id: Date.now().toString(),
+          role: "ai",
+          content: "System Notice: Interview forcibly terminated due to multiple policy violations (tab switching / loss of window focus). Please review your dashboard.",
+          isAgentAda: true
+        };
+        setMessages(prevMsgs => [...prevMsgs, terminationMsg]);
+        return newWarnings;
+      }
+      
+      setWarningMessage(reason);
+      setShowWarning(true);
+      setTimeout(() => setShowWarning(false), 5000);
+      return newWarnings;
+    });
+  }, [interviewComplete]);
 
   const toggleListening = () => {
     if (isListening) {
@@ -132,8 +181,22 @@ export default function InterviewPage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-2 sm:px-4 h-[calc(100vh-8rem)] min-h-[500px] flex flex-col animate-fade-in-up">
-      <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row justify-start sm:justify-between items-start sm:items-center gap-3 sm:gap-0 bg-white border border-slate-200 rounded-2xl p-4 premium-shadow">
+    <div 
+      className="max-w-4xl mx-auto px-2 sm:px-4 h-[calc(100vh-8rem)] min-h-[500px] flex flex-col animate-fade-in-up select-none"
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      {showWarning && (
+        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 bg-red-600 text-white px-6 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-fade-in-down">
+          <svg className="w-6 h-6 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <div>
+            <p className="font-bold text-sm">Policy Violation Detected!</p>
+            <p className="text-xs text-red-100">Warning {warnings}/3: {warningMessage}</p>
+          </div>
+        </div>
+      )}
+      <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row justify-start sm:justify-between items-start sm:items-center gap-3 sm:gap-0 bg-white border border-slate-200 rounded-2xl p-4 premium-shadow relative z-10">
         <div>
           <h1 className="text-lg sm:text-xl font-bold text-slate-900 flex items-center gap-2">
             <span className="relative flex h-3 w-3 flex-shrink-0">
@@ -195,6 +258,8 @@ export default function InterviewPage() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           disabled={interviewComplete || isTyping}
+          onPaste={(e) => { e.preventDefault(); handleViolation("Copying or pasting text is not allowed."); }}
+          onCopy={(e) => { e.preventDefault(); handleViolation("Copying or pasting text is not allowed."); }}
           placeholder={interviewComplete ? "Interview complete. Review dashboard." : "Type your response..."}
           className="w-full bg-white border border-slate-300 rounded-2xl pl-4 sm:pl-6 pr-28 py-3 sm:py-4 text-sm sm:text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-slate-400 resize-none h-20 sm:h-24 premium-shadow"
           onKeyDown={(e) => {
