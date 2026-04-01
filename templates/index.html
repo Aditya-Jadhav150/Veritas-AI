@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Veritas-AI - AI Detection Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="dashboard-body">
+    <div class="background-elements">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-3"></div>
+    </div>
+
+    <nav class="navbar glass-panel-flat">
+        <div class="logo">
+            <i class="fa-solid fa-shield-halved"></i>
+            <h2>Veritas-AI</h2>
+        </div>
+        <div class="user-profile">
+            <span class="username">Welcome, <strong>{{ user.username }}</strong></span>
+            <a href="/logout" class="btn outline-btn"><i class="fa-solid fa-right-from-bracket"></i> Logout</a>
+        </div>
+    </nav>
+
+    <main class="dashboard-container">
+        
+        <div class="analyzer-panel glass-panel">
+            <div class="panel-header">
+                <h3><i class="fa-solid fa-magnifying-glass-chart"></i> Image Source Analyzer</h3>
+                <p>Upload a facial image to securely evaluate biometric integrity using our PyTorch ResNet-18 model.</p>
+            </div>
+            
+            <div class="upload-area" id="drop-zone">
+                <div class="upload-content">
+                    <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
+                    <h4>Drag & Drop image here</h4>
+                    <p>or</p>
+                    <label class="btn primary-btn btn-sm">
+                        Browse Files
+                        <input type="file" id="file-input" hidden accept="image/*">
+                    </label>
+                    <p class="file-hint">Supports JPG, PNG (Max 16MB)</p>
+                </div>
+            </div>
+            
+            <div class="upload-preview" id="preview-area" style="display: none;">
+                <img id="image-preview" src="" alt="Image Preview">
+                <div class="preview-actions">
+                    <button class="btn accent-btn" id="analyze-btn"><i class="fa-solid fa-microchip"></i> Run AI Analysis</button>
+                    <button class="btn secondary-btn" id="cancel-btn"><i class="fa-solid fa-xmark"></i> Cancel</button>
+                </div>
+            </div>
+
+            <!-- Loading Indicator -->
+            <div class="loader-container" id="loader" style="display: none;">
+                <div class="scanning-bar"></div>
+                <div class="spinner"></div>
+                <p>Evaluating neural patterns...</p>
+            </div>
+        </div>
+
+        <!-- Result Card -->
+        <div class="result-panel glass-panel hidden" id="result-card">
+            <h3 class="result-title">Analysis Complete</h3>
+            
+            <div class="verdict-container">
+                <div class="verdict-badge" id="verdict-badge"></div>
+            </div>
+            
+            <div class="metrics">
+                <div class="metric">
+                    <span>AI Confidence</span>
+                    <strong id="confidence-score">0%</strong>
+                </div>
+                <div class="progress-container">
+                    <div class="progress-bar" id="confidence-bar"></div>
+                </div>
+            </div>
+            
+            <button class="btn outline-btn full-width" onclick="resetAnalyzer()"><i class="fa-solid fa-rotate-right"></i> Scan Another Image</button>
+        </div>
+        
+    </main>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
