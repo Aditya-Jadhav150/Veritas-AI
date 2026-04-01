@@ -21,7 +21,11 @@ COPY . /app
 # Note: By default, we override any local PyTorch config to download the CPU-only version for cloud hosting!
 RUN pip install --no-cache-dir --upgrade pip
 RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
-RUN pip install --no-cache-dir -r requirements.txt
+# Strip the incompatible Windows CUDA wheel demands exported by the user's local pip freeze
+RUN sed -i '/^torch==/d' requirements.txt && \
+    sed -i '/^torchvision==/d' requirements.txt && \
+    sed -i '/^torchaudio==/d' requirements.txt && \
+    pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir gunicorn
 
 # The Hugging Face platform strictly exposes port 7860
