@@ -146,6 +146,7 @@ body {
 .logo i {
     background: linear-gradient(135deg, var(--primary), var(--accent));
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
     font-size: 2rem;
 }
@@ -275,3 +276,45 @@ body {
 @keyframes scan { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+/* --- Mobile Responsiveness --- */
+@media (max-width: 768px) {
+    .auth-container {
+        padding: 30px 20px;
+        width: 90%;
+    }
+    .dashboard-container {
+        margin: 20px auto;
+        width: 95%;
+        gap: 20px;
+    }
+    .analyzer-panel, .result-panel {
+        padding: 25px 15px;
+    }
+    .upload-area {
+        padding: 30px 10px;
+    }
+    .navbar {
+        flex-direction: column;
+        gap: 15px;
+        padding: 15px 5%;
+        text-align: center;
+    }
+    .user-profile {
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+    .verdict-badge {
+        font-size: 1rem;
+        padding: 15px 20px;
+        letter-spacing: 0px;
+        width: 100%;
+        justify-content: center;
+    }
+    .preview-actions {
+        flex-direction: column;
+    }
+    .btn { width: 100%; }
+    .blob-1 { width: 250px; height: 250px; }
+    .blob-2 { width: 200px; height: 200px; }
+}
