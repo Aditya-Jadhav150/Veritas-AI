@@ -38,6 +38,10 @@ class User(UserMixin, db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+# Guarantee the SQLite User database exists if deployed out via WSGI Container (Docker)
+with app.app_context():
+    db.create_all()
+
 # --- PyTorch Model Setup ---
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Loading Hugging Face Hub Deepfake model onto:", device)
@@ -166,6 +170,4 @@ def api_predict():
             return jsonify({"success": False, "message": result.get("error")}), 500
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
     app.run(debug=True, port=5000)
