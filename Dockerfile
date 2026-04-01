@@ -1,5 +1,5 @@
 # Build a slim Python environment optimized for heavy machine learning
-FROM python:3.9-slim
+FROM python:3.11-slim
 
 # Install system-level dependencies for computer vision (OpenCV/Pillow)
 RUN apt-get update && apt-get install -y \
