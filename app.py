@@ -9,7 +9,7 @@ import os
 import torch
 import torch.nn as nn
 from transformers import AutoImageProcessor, AutoModelForImageClassification
-from PIL import Image
+from PIL import Image, ImageOps
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -71,10 +71,27 @@ except Exception as e:
 
 def predict_image(image_path):
     try:
-        image = Image.open(image_path).convert("RGB")
+        # CRITICAL FIX 1: Read EXIF orientation natively! Phone cameras write pixels sideways.
+        image = Image.open(image_path)
+        image = ImageOps.exif_transpose(image).convert("RGB")
         
-        # Direct Transformer Inference: The ViT operates on the full global image context, not just localized bounding boxes!
-        inputs = processor(images=image, return_tensors="pt").to(device)
+        # CRITICAL FIX 2: Isolate the human face. The ViT hallucinated on complex phone backgrounds (rooms, outdoors).
+        inference_image = image
+        try:
+            boxes, probs = mtcnn.detect(image)
+            if boxes is not None and len(boxes) > 0:
+                box = boxes[0]  # Take highest prob face
+                
+                # Expand box exactly by 15% to grab jawline and hairline (deepfake seams)
+                w, h = box[2] - box[0], box[3] - box[1]
+                b1, b2 = max(0, box[0] - w * 0.15), max(0, box[1] - h * 0.15)
+                b3, b4 = min(image.width, box[2] + w * 0.15), min(image.height, box[3] + h * 0.15)
+                
+                inference_image = image.crop((int(b1), int(b2), int(b3), int(b4)))
+        except Exception:
+            pass # Safely back off to the raw image if no logical face is found
+        
+        inputs = processor(images=inference_image, return_tensors="pt").to(device)
 
         with torch.no_grad():
             outputs = model(**inputs)
