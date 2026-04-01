@@ -15,6 +15,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+from werkzeug.middleware.proxy_fix import ProxyFix
 from facenet_pytorch import MTCNN
 
 app = Flask(__name__)
@@ -26,6 +27,11 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB limit
 # CRITICAL HF FIX: Allow cookies to survive inside across cross-origin iframes!
 app.config['SESSION_COOKIE_SAMESITE'] = 'None'
 app.config['SESSION_COOKIE_SECURE'] = True
+app.config['REMEMBER_COOKIE_SAMESITE'] = 'None'
+app.config['REMEMBER_COOKIE_SECURE'] = True
+
+# Tell Flask it is behind a proxy (like Hugging Face) so Secure=True works over HTTP
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
