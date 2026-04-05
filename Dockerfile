@@ -7,29 +7,36 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Set up the working directory inside the container
+# Set working directory
 WORKDIR /app
 
-# We require highly specific directory creation for Flask and SQLite databases
+# Required directories for Flask + uploads
 RUN mkdir -p static/uploads instance \
     && chmod -R 777 static/uploads instance
 
-# Copy everything from our workspace over to the Docker container
+# Copy project files
 COPY . /app
 
-# Upgrade pip and install standard python dependencies
-# Note: By default, we override any local PyTorch config to download the CPU-only version for cloud hosting!
+# Upgrade pip
 RUN pip install --no-cache-dir --upgrade pip
-RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
-# Strip the incompatible Windows CUDA wheel demands exported by the user's local pip freeze
+
+# ✅ FIXED: Install compatible PyTorch version (LOCKED)
+RUN pip install --no-cache-dir \
+    torch==2.2.2 \
+    torchvision==0.17.2 \
+    --index-url https://download.pytorch.org/whl/cpu
+
+# Remove conflicting torch entries from requirements
 RUN sed -i '/^torch==/d' requirements.txt && \
     sed -i '/^torchvision==/d' requirements.txt && \
     sed -i '/^torchaudio==/d' requirements.txt && \
     pip install --no-cache-dir -r requirements.txt
+
+# Install gunicorn
 RUN pip install --no-cache-dir gunicorn
 
-# The Hugging Face platform strictly exposes port 7860
+# Hugging Face port
 EXPOSE 7860
 
-# We use Gunicorn to run the Flask WSGI system in production!
+# Run Flask app
 CMD ["gunicorn", "-b", "0.0.0.0:7860", "--workers=2", "--timeout=120", "app:app"]
