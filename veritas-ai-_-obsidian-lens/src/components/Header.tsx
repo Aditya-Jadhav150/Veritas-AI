@@ -16,9 +16,17 @@ export default function Header() {
         } catch (e) {
           console.error("Failed to parse history");
         }
+      } else {
+        setHistory([]);
       }
     }
   }, [isHistoryOpen]);
+
+  useEffect(() => {
+    const handleClear = () => setHistory([]);
+    window.addEventListener('veritas_history_cleared', handleClear);
+    return () => window.removeEventListener('veritas_history_cleared', handleClear);
+  }, []);
 
   return (
     <>
@@ -32,11 +40,13 @@ export default function Header() {
             </h1>
           </div>
           
-          <nav className="hidden md:flex items-center gap-8">
-            <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-white font-bold font-headline tracking-tight uppercase text-sm hover:text-white transition-colors duration-300">
+          <nav className="flex items-center gap-4 sm:gap-8">
+            <button onClick={() => {
+              document.getElementById('analyzer')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }} className="text-white font-bold font-headline tracking-tight uppercase text-xs sm:text-sm hover:text-white transition-colors duration-300">
               Analyzer
             </button>
-            <button onClick={() => setIsHistoryOpen(true)} className="text-[#c6c6ce] font-headline tracking-tight uppercase text-sm hover:text-white transition-colors duration-300 cursor-pointer">
+            <button onClick={() => setIsHistoryOpen(true)} className="text-[#c6c6ce] font-headline tracking-tight uppercase text-xs sm:text-sm hover:text-white transition-colors duration-300 cursor-pointer">
               History
             </button>
           </nav>

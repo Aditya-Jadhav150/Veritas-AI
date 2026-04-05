@@ -96,7 +96,7 @@ export default function Analyzer() {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8" id="analyzer">
       <section className="glass-panel rounded-xl p-8 white-bloom relative overflow-hidden">
         <div className="absolute -top-24 -right-24 w-64 h-64 bg-white/5 rounded-full blur-[80px]" />
         

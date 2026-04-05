@@ -35,7 +35,7 @@ export default function BottomNav() {
 
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
   const scrollToAnalyzer = () => {
-    window.scrollTo({ top: window.innerHeight * 0.4, behavior: 'smooth' });
+    document.getElementById('analyzer')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
   const openSettings = () => {
     setIsSettingsOpen(true);
@@ -52,6 +52,7 @@ export default function BottomNav() {
 
   const handleClearHistory = () => {
     localStorage.removeItem('veritas_history');
+    window.dispatchEvent(new Event('veritas_history_cleared'));
     setShowClearConfirm(false);
   };
 
