@@ -2,8 +2,8 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
-
 import { useState, FormEvent } from 'react';
+import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Shield, 
@@ -27,6 +27,12 @@ export default function App() {
     setIsInitializing(true);
     setErrorMsg('');
     
+    if (username.length < 5 && !isLogin) {
+      setErrorMsg('Username must be at least 5 characters');
+      setIsInitializing(false);
+      return;
+    }
+
     const endpoint = isLogin ? '/api/login' : '/api/register';
     
     try {
@@ -38,7 +44,6 @@ export default function App() {
       const data = await res.json();
       
       if (data.success) {
-        // Redirect to dashboard
         window.location.href = '/';
       } else {
         setErrorMsg(data.message || 'Authentication failed');
@@ -50,7 +55,32 @@ export default function App() {
     }
   };
 
+  const handleGoogleSuccess = async (credentialResponse: any) => {
+    setIsInitializing(true);
+    try {
+      const res = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+           credential: credentialResponse.credential, 
+           clientId: credentialResponse.clientId 
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        window.location.href = '/';
+      } else {
+        setErrorMsg(data.message || 'Google Authentication failed');
+        setIsInitializing(false);
+      }
+    } catch {
+      setErrorMsg('Server error during Google Auth.');
+      setIsInitializing(false);
+    }
+  };
+
   return (
+    <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID || "PASTE_YOUR_GOOGLE_CLIENT_ID_HERE"}>
     <div className="min-h-screen bg-background flex flex-col relative overflow-hidden selection:bg-white/20">
       {/* Abstract Background Elements */}
       <div className="absolute inset-0 z-0 pointer-events-none">
@@ -214,6 +244,16 @@ export default function App() {
 
               {/* Secondary Actions */}
               <div className="mt-8 text-center border-t border-white/5 pt-8">
+                <div className="flex justify-center mb-6">
+                   <GoogleLogin
+                     onSuccess={handleGoogleSuccess}
+                     onError={() => setErrorMsg("Google Pop-up was closed or failed.")}
+                     theme="filled_black"
+                     size="large"
+                     text="continue_with"
+                     shape="rectangular"
+                   />
+                </div>
                 <p className="text-secondary font-headline text-[11px] uppercase tracking-wider">
                   {isLogin ? "Don't have an account?" : "Already have an account?"}
                   <button 
@@ -267,6 +307,7 @@ export default function App() {
         <StatusIndicator label="Threat" value="Minimal" align="right" />
       </div>
     </div>
+    </GoogleOAuthProvider>
   );
 }
 

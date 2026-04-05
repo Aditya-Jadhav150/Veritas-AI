@@ -7,7 +7,13 @@ export default function BottomNav() {
   const [activeTab, setActiveTab] = useState<'main' | 'profile'>('main');
 
   // Form states
-  const [name, setName] = useState("SECURE_USER");
+  const [username, setUsername] = useState("");
+  const [isLocked, setIsLocked] = useState(false);
+  const [daysRemaining, setDaysRemaining] = useState(0);
+  const [isGoogle, setIsGoogle] = useState(false);
+  const [profileMessage, setProfileMessage] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
   const [dob, setDob] = useState("");
   const [email, setEmail] = useState("");
   const [optIn, setOptIn] = useState(false);
@@ -20,18 +26,33 @@ export default function BottomNav() {
     if (s) {
       try {
         const parsed = JSON.parse(s);
-        if (parsed.name) setName(parsed.name);
         if (parsed.dob) setDob(parsed.dob);
-        if (parsed.email) setEmail(parsed.email);
         if (parsed.optIn !== undefined) setOptIn(parsed.optIn);
       } catch(e) {}
     }
   }, []);
 
+  // Fetch verified profile from backend
+  useEffect(() => {
+    if (isSettingsOpen && activeTab === 'profile') {
+       fetch('/api/me')
+         .then(res => res.json())
+         .then(data => {
+            if (data.success) {
+               setUsername(data.user.username);
+               setEmail(data.user.email || '');
+               setIsLocked(data.user.is_locked);
+               setDaysRemaining(data.user.days_remaining);
+               setIsGoogle(data.user.is_google);
+            }
+         }).catch(() => {});
+    }
+  }, [isSettingsOpen, activeTab]);
+
   // Save settings
   useEffect(() => {
-    localStorage.setItem('veritas_settings', JSON.stringify({ name, dob, email, optIn }));
-  }, [name, dob, email, optIn]);
+    localStorage.setItem('veritas_settings', JSON.stringify({ dob, optIn }));
+  }, [dob, optIn]);
 
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
   const scrollToAnalyzer = () => {
@@ -54,6 +75,29 @@ export default function BottomNav() {
     localStorage.removeItem('veritas_history');
     window.dispatchEvent(new Event('veritas_history_cleared'));
     setShowClearConfirm(false);
+  };
+
+  const handleSaveProfile = async () => {
+    setIsSaving(true);
+    setProfileMessage("");
+    try {
+      const res = await fetch('/api/update_username', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ new_username: username })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setIsLocked(true);
+        setDaysRemaining(7);
+        setProfileMessage("Username officially updated.");
+      } else {
+        setProfileMessage(data.message || "Failed to parse username.");
+      }
+    } catch {
+       setProfileMessage("Network error during update.");
+    }
+    setIsSaving(false);
   };
 
   return (
@@ -227,15 +271,31 @@ export default function BottomNav() {
                   </div>
                   
                   <div className="p-6 space-y-5">
+                    {profileMessage && (
+                      <div className="p-3 bg-white/5 border border-white/10 rounded-sm text-xs font-mono text-center">
+                        {profileMessage}
+                      </div>
+                    )}
                     <div className="space-y-2">
-                      <label className="font-headline text-[10px] uppercase tracking-widest text-secondary ml-1">Full Name</label>
+                      <div className="flex justify-between items-center ml-1">
+                        <label className="font-headline text-[10px] uppercase tracking-widest text-secondary">
+                          Unique Handle (Username)
+                        </label>
+                        {isLocked && (
+                          <span className="text-[9px] uppercase tracking-widest text-red-400 flex items-center gap-1 font-bold">
+                            Locked • {daysRemaining} days left
+                          </span>
+                        )}
+                      </div>
                       <input 
                         type="text" 
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        className="w-full bg-surface-container-lowest border border-white/10 rounded p-3 text-sm text-white focus:ring-0 placeholder:text-white/20 focus:outline-none focus:border-white/30 transition-colors"
-                        placeholder="Enter your name"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        disabled={isLocked || isSaving}
+                        className="w-full bg-surface-container-lowest border border-white/10 rounded p-3 text-sm text-white focus:ring-0 placeholder:text-white/20 focus:outline-none focus:border-white/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        placeholder="Secure Username"
                       />
+                      <p className="text-[10px] text-secondary/50 font-mono ml-1">Must be at least 5 characters. Changes restricted to once per week.</p>
                     </div>
                     
                     <div className="space-y-2">
@@ -243,10 +303,12 @@ export default function BottomNav() {
                       <input 
                         type="email" 
                         value={email}
+                        disabled={isGoogle}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="w-full bg-surface-container-lowest border border-white/10 rounded p-3 text-sm text-white focus:ring-0 placeholder:text-white/20 focus:outline-none focus:border-white/30 transition-colors"
+                        className="w-full bg-surface-container-lowest border border-white/10 rounded p-3 text-sm text-white focus:ring-0 placeholder:text-white/20 focus:outline-none focus:border-white/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         placeholder="secure@veritas.ai"
                       />
+                      {isGoogle && <p className="text-[9px] text-blue-400 capitalize font-mono">Managed by Google</p>}
                     </div>
 
                     <div className="space-y-2">
@@ -259,12 +321,19 @@ export default function BottomNav() {
                       />
                     </div>
                     
-                    <div className="pt-4 flex justify-end">
+                    <div className="pt-4 flex justify-end gap-3">
                       <button 
                         onClick={() => setActiveTab('main')}
-                        className="px-6 py-2.5 bg-white text-black text-xs font-bold uppercase tracking-widest rounded hover:bg-neutral-200 transition-colors"
+                        className="px-4 py-2.5 text-secondary text-xs font-bold uppercase tracking-widest"
                       >
-                        Save Profile
+                        Back
+                      </button>
+                      <button 
+                        onClick={handleSaveProfile}
+                        disabled={isLocked || isSaving}
+                        className="px-6 py-2.5 bg-white text-black text-xs font-bold uppercase tracking-widest rounded hover:bg-neutral-200 transition-colors disabled:opacity-50"
+                      >
+                        {isSaving ? "Saving..." : "Save Profile"}
                       </button>
                     </div>
                   </div>

@@ -17,6 +17,12 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from werkzeug.middleware.proxy_fix import ProxyFix
 from facenet_pytorch import MTCNN
+from datetime import datetime, timedelta
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+from werkzeug.utils import secure_filename
+from werkzeug.middleware.proxy_fix import ProxyFix
+from facenet_pytorch import MTCNN
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'deepfake-detection-super-secret-key-2026'
@@ -43,7 +49,10 @@ login_manager.login_view = 'login'
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=False)
-    password_hash = db.Column(db.String(300), nullable=False)
+    email = db.Column(db.String(150), unique=True, nullable=True)
+    password_hash = db.Column(db.String(300), nullable=True) # Now nullable for Google users
+    google_id = db.Column(db.String(150), unique=True, nullable=True)
+    last_username_change = db.Column(db.DateTime, nullable=True)
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -148,10 +157,54 @@ def login():
 def api_login():
     data = request.json
     user = User.query.filter_by(username=data.get('username')).first()
-    if user and check_password_hash(user.password_hash, data.get('password')):
+    # Google users will not have a password hash, explicitly block password login for them if hash is None
+    if user and user.password_hash and check_password_hash(user.password_hash, data.get('password')):
         login_user(user, remember=True)
         return jsonify({"success": True})
     return jsonify({"success": False, "message": "Invalid username or password"})
+
+@app.route('/api/auth/google', methods=['POST'])
+def api_google_login():
+    data = request.json
+    token = data.get('credential')
+    client_id = data.get('clientId')
+    
+    if not token or not client_id:
+        return jsonify({"success": False, "message": "Missing Google payload"}), 400
+        
+    try:
+        # Validate the JWT natively using Google's Python SDK
+        idinfo = id_token.verify_oauth2_token(token, google_requests.Request(), client_id)
+        
+        google_id = idinfo["sub"]
+        email = idinfo.get("email")
+        # Base username strategy from email prefix
+        base_username = email.split('@')[0] if email else f"User{google_id[:6]}"
+        
+        user = User.query.filter_by(google_id=google_id).first()
+        
+        if not user:
+            # Handle potential username collisions automatically during first creation
+            candidate = base_username
+            attempt = 1
+            while User.query.filter_by(username=candidate).first():
+                candidate = f"{base_username}{attempt}"
+                attempt += 1
+
+            user = User(
+                username=candidate,
+                email=email,
+                google_id=google_id,
+                # Force last_username_change to 7 days ago initially so they can change auto-generated names immediately
+                last_username_change=datetime.utcnow() - timedelta(days=8)
+            )
+            db.session.add(user)
+            db.session.commit()
+            
+        login_user(user, remember=True)
+        return jsonify({"success": True})
+    except ValueError:
+        return jsonify({"success": False, "message": "Invalid Google token"}), 401
 
 @app.route('/api/register', methods=['POST'])
 def api_register():
@@ -159,19 +212,69 @@ def api_register():
     username = data.get('username')
     password = data.get('password')
     
-    if not username or len(username) < 3:
-        return jsonify({"success": False, "message": "Username must be at least 3 characters."})
+    if not username or len(username) < 5:
+        return jsonify({"success": False, "message": "Username must be at least 5 characters long."})
     
     if User.query.filter_by(username=username).first():
-        return jsonify({"success": False, "message": "Username already exists."})
+        return jsonify({"success": False, "message": "Username already exists. Please choose a new combination."})
     
-    new_user = User(username=username, password_hash=generate_password_hash(password))
+    new_user = User(
+        username=username, 
+        password_hash=generate_password_hash(password),
+        last_username_change=datetime.utcnow() # Lock them for 7 days upon standard creation
+    )
     db.session.add(new_user)
     db.session.commit()
     
     # Auto-login after registration
     login_user(new_user)
     return jsonify({"success": True})
+
+@app.route('/api/me', methods=['GET'])
+@login_required
+def api_me():
+    last_change = current_user.last_username_change
+    days_since_change = (datetime.utcnow() - last_change).days if last_change else 999
+    is_locked = days_since_change < 7
+    days_remaining = max(0, 7 - days_since_change)
+    
+    return jsonify({
+        "success": True,
+        "user": {
+            "username": current_user.username,
+            "email": current_user.email,
+            "is_locked": is_locked,
+            "days_remaining": days_remaining,
+            "is_google": current_user.google_id is not None
+        }
+    })
+
+@app.route('/api/update_username', methods=['POST'])
+@login_required
+def api_update_username():
+    data = request.json
+    new_username = data.get('new_username')
+    
+    if not new_username or len(new_username) < 5:
+        return jsonify({"success": False, "message": "Username must be at least 5 characters long."})
+        
+    if current_user.username == new_username:
+         return jsonify({"success": False, "message": "This is already your username."})
+         
+    # Enforce 7 day lockout
+    if current_user.last_username_change:
+        days_since_change = (datetime.utcnow() - current_user.last_username_change).days
+        if days_since_change < 7:
+            return jsonify({"success": False, "message": f"You changed your username recently. Please wait {7 - days_since_change} more days."})
+
+    # Ensure absolute uniqueness
+    if User.query.filter_by(username=new_username).first():
+        return jsonify({"success": False, "message": "Username already exists. Please choose a new combination."})
+        
+    current_user.username = new_username
+    current_user.last_username_change = datetime.utcnow()
+    db.session.commit()
+    return jsonify({"success": True, "message": "Username updated successfully."})
 
 @app.route('/logout')
 @login_required
