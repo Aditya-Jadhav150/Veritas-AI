@@ -51,7 +51,10 @@ def load_user(user_id):
 
 # Guarantee the SQLite User database exists if deployed out via WSGI Container (Docker)
 with app.app_context():
-    db.create_all()
+    try:
+        db.create_all()
+    except Exception as e:
+        print(f"Skipping database creation (likely handled by another worker): {e}")
 
 # --- PyTorch Model Setup ---
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
