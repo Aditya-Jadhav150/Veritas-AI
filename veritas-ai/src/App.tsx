@@ -80,7 +80,7 @@ export default function App() {
   };
 
   return (
-    <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID || "PASTE_YOUR_GOOGLE_CLIENT_ID_HERE"}>
+    <GoogleOAuthProvider clientId="324506141677-i5110j0ld14iveadefj2qnui4o7eub1t.apps.googleusercontent.com">
     <div className="min-h-screen bg-background flex flex-col relative overflow-hidden selection:bg-white/20">
       {/* Abstract Background Elements */}
       <div className="absolute inset-0 z-0 pointer-events-none">
