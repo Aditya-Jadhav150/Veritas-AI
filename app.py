@@ -1,5 +1,6 @@
 import warnings
 import os
+import re
 
 # Suppress FaceNet/PyTorch warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -20,13 +21,15 @@ from facenet_pytorch import MTCNN
 from datetime import datetime, timedelta
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
-from werkzeug.utils import secure_filename
-from werkzeug.middleware.proxy_fix import ProxyFix
-from facenet_pytorch import MTCNN
+from collections import defaultdict
+import time
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'deepfake-detection-super-secret-key-2026'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
+
+# Simple memory cache for rate limiting IPs (tracks failed attempts only)
+failed_logins = defaultdict(list)
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB limit
 
@@ -53,6 +56,7 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(300), nullable=True) # Now nullable for Google users
     google_id = db.Column(db.String(150), unique=True, nullable=True)
     last_username_change = db.Column(db.DateTime, nullable=True)
+    ai_data_optin = db.Column(db.Boolean, default=False, nullable=True)
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -60,6 +64,12 @@ def load_user(user_id):
 
 # Guarantee the SQLite User database exists if deployed out via WSGI Container (Docker)
 with app.app_context():
+    try:
+        from sqlalchemy import text
+        db.session.execute(text('ALTER TABLE user ADD COLUMN ai_data_optin BOOLEAN DEFAULT 0'))
+        db.session.commit()
+    except Exception:
+        pass
     try:
         db.create_all()
     except Exception as e:
@@ -142,6 +152,13 @@ def predict_image(image_path):
         return {"success": False, "error": str(e)}
 
 # --- Web Routes ---
+@app.route('/aegis-override-system')
+@login_required
+def admin():
+    if not current_user.email or current_user.email.strip().lower() != 'adityajadhav300405@gmail.com':
+        return redirect(url_for('index'))
+    return render_template('admin.html', user=current_user)
+
 @app.route('/')
 @login_required
 def index():
@@ -155,13 +172,29 @@ def login():
 
 @app.route('/api/login', methods=['POST'])
 def api_login():
+    ip = request.remote_addr or request.headers.get('X-Forwarded-For', 'unknown-ip')
+    now = datetime.utcnow()
+    
+    # Prune failures older than 5 hours (18000 seconds)
+    failed_logins[ip] = [t for t in failed_logins[ip] if (now - t).total_seconds() < 18000]
+    
+    if len(failed_logins[ip]) >= 5:
+        return jsonify({"success": False, "message": "CRITICAL: Too many failed attempts. Your device is locked out of logins for 5 hours."}), 429
+
     data = request.json
     user = User.query.filter_by(username=data.get('username')).first()
     # Google users will not have a password hash, explicitly block password login for them if hash is None
     if user and user.password_hash and check_password_hash(user.password_hash, data.get('password')):
         login_user(user, remember=True)
+        # Clear failures on successful login
+        if ip in failed_logins:
+            del failed_logins[ip]
         return jsonify({"success": True})
-    return jsonify({"success": False, "message": "Invalid username or password"})
+        
+    # Record the failure
+    failed_logins[ip].append(now)
+    attempts_left = 5 - len(failed_logins[ip])
+    return jsonify({"success": False, "message": f"Invalid username or password. {attempts_left} attempts remaining."}), 401
 
 @app.route('/api/auth/google', methods=['POST'])
 def api_google_login():
@@ -214,6 +247,17 @@ def api_register():
     
     if not username or len(username) < 5:
         return jsonify({"success": False, "message": "Username must be at least 5 characters long."})
+        
+    if not password or len(password) < 8:
+        return jsonify({"success": False, "message": "Password must be at least 8 characters long."})
+    if not re.search(r"[a-z]", password):
+        return jsonify({"success": False, "message": "Password must contain at least one lowercase letter."})
+    if not re.search(r"[A-Z]", password):
+        return jsonify({"success": False, "message": "Password must contain at least one uppercase letter."})
+    if not re.search(r"[0-9]", password):
+        return jsonify({"success": False, "message": "Password must contain at least one number."})
+    if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", password):
+        return jsonify({"success": False, "message": "Password must contain at least one special character."})
     
     if User.query.filter_by(username=username).first():
         return jsonify({"success": False, "message": "Username already exists. Please choose a new combination."})
@@ -229,6 +273,30 @@ def api_register():
     # Auto-login after registration
     login_user(new_user)
     return jsonify({"success": True})
+
+@app.route('/api/admin/users', methods=['GET'])
+@login_required
+def api_admin_users():
+    if not current_user.email or current_user.email.strip().lower() != 'adityajadhav300405@gmail.com':
+        return jsonify({"success": False, "message": "FORBIDDEN: Admin access only."}), 403
+    
+    users = User.query.all()
+    user_data = []
+    for u in users:
+        auth_type = "Google" if u.google_id else "Password"
+        user_data.append({
+            "id": u.id,
+            "username": u.username,
+            "email": u.email or "Unassigned",
+            "auth_type": auth_type,
+            "last_username_change": u.last_username_change.isoformat() if u.last_username_change else None,
+            "ai_data_optin": u.ai_data_optin
+        })
+        
+    return jsonify({
+        "success": True,
+        "users": user_data
+    })
 
 @app.route('/api/me', methods=['GET'])
 @login_required
@@ -275,6 +343,17 @@ def api_update_username():
     current_user.last_username_change = datetime.utcnow()
     db.session.commit()
     return jsonify({"success": True, "message": "Username updated successfully."})
+
+@app.route('/api/update_optin', methods=['POST'])
+@login_required
+def api_update_optin():
+    data = request.json
+    optin_status = data.get('ai_data_optin')
+    if optin_status is not None:
+        current_user.ai_data_optin = bool(optin_status)
+        db.session.commit()
+        return jsonify({"success": True})
+    return jsonify({"success": False}), 400
 
 @app.route('/logout')
 @login_required

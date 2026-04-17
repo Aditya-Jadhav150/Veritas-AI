@@ -6,6 +6,7 @@ env/
 
 # Datasets and Weights (CRITICAL TO IGNORE)
 dataset/
+FAKE_IMAGES/
 *.pth
 *.safetensors
 *.h5
